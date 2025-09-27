@@ -1,109 +1,99 @@
 import os
 import requests
-import logging
 import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# إعداد التسجيل في السجلات
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# قراءة التوكن من المتغيرات البيئية
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-if not BOT_TOKEN:
-    print("🚨 خطأ: لم يتم العثور على توكن صالح!")
-    exit(1)
-
-# رابط بيانات القرآن الكريم
-QURAN_JSON_URL = "https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/quran.json"
-
-# تحميل بيانات القرآن
-print(f"⏳ تحميل بيانات القرآن من: {QURAN_JSON_URL}")
+# ---------------------------
+# تحميل بيانات القرآن من JSON
+# ---------------------------
+QURAN_URL = "https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/quran.json"
+print(f"⏳ تحميل بيانات القرآن من: {QURAN_URL}")
 try:
-    response = requests.get(QURAN_JSON_URL)
+    response = requests.get(QURAN_URL)
     response.raise_for_status()
     quran_data = response.json()
     print(f"✅ تم تحميل القرآن بنجاح! عدد السور: {len(quran_data)}")
 except Exception as e:
-    print(f"❌ فشل تحميل ملف القرآن من الرابط.\nالخطأ: {e}")
-    exit(1)
+    print(f"❌ فشل تحميل ملف القرآن من الرابط: {e}")
+    quran_data = []
 
-# إنشاء تطبيق Flask
+# ---------------------------
+# إعداد التوكن والتطبيق
+# ---------------------------
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("❌ لم يتم العثور على التوكن في المتغيرات البيئية")
+
+print(f"✅ تم قراءة التوكن بنجاح: {BOT_TOKEN[:10]}********")
+
+# إنشاء Flask app و Telegram application
 app = Flask(__name__)
-
-# إنشاء تطبيق Telegram
 application = Application.builder().token(BOT_TOKEN).build()
 
-# ====== دوال البوت ======
+# ---------------------------
+# الأوامر
+# ---------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 مرحبًا بك في *بوت آيات القرآن الكريم*!\n"
-        "اكتب مثلًا: `البقرة 255` للحصول على الآية المطلوبة.\n"
-        "📖 البوت يدعم كل سور القرآن الكريم.",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("👋 أهلاً بك في بوت آيات القرآن!\nأرسل اسم السورة ورقم الآية مثل:\nالبقرة 255")
 
 async def get_ayah(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
+    parts = text.split()
 
-    try:
-        parts = text.split()
-        if len(parts) != 2:
-            raise ValueError("❗ اكتب بصيغة صحيحة مثل: البقرة 255")
+    if len(parts) != 2:
+        await update.message.reply_text("❌ اكتب بصيغة صحيحة مثل: البقرة 255")
+        return
 
-        surah_name = parts[0]
-        ayah_number = int(parts[1])
+    surah_name, ayah_number = parts[0], parts[1]
 
-        # البحث عن السورة
-        surah = next((s for s in quran_data if s["name"] == surah_name or s["transliteration"] == surah_name), None)
-        if not surah:
-            await update.message.reply_text("❌ لم يتم العثور على اسم السورة.")
-            return
+    if not ayah_number.isdigit():
+        await update.message.reply_text("❌ رقم الآية يجب أن يكون رقمًا.")
+        return
 
-        # البحث عن الآية
-        ayah = next((a for a in surah["verses"] if a["id"] == ayah_number), None)
-        if not ayah:
-            await update.message.reply_text("❌ لم يتم العثور على هذه الآية في السورة.")
-            return
+    for surah in quran_data:
+        if surah["name"].strip() == surah_name.strip():
+            for ayah in surah["verses"]:
+                if int(ayah["id"]) == int(ayah_number):
+                    await update.message.reply_text(f"📖 {ayah['text']}")
+                    return
 
-        # إرسال الآية
-        reply = f"📖 *{surah_name} - {ayah_number}*\n\n{ayah['text']}"
-        await update.message.reply_text(reply, parse_mode="Markdown")
+    await update.message.reply_text("⚠️ لم أجد السورة أو الآية المطلوبة. تأكد من الاسم والرقم.")
 
-    except Exception:
-        await update.message.reply_text("❗ اكتب بصيغة صحيحة مثل: البقرة 255")
-
-# ====== إعداد الأوامر ======
+# ---------------------------
+# تسجيل الأوامر
+# ---------------------------
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_ayah))
 
-# ====== Webhook ======
-WEBHOOK_URL = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
+# ---------------------------
+# تهيئة التطبيق عند بدء السيرفر
+# ---------------------------
+async def init_telegram_app():
+    """تهيئة وتشغيل تطبيق Telegram عند بدء Flask."""
+    await application.initialize()
+    await application.start()
+    webhook_url = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
+    await application.bot.set_webhook(url=webhook_url)
+    print(f"🌍 تم تعيين Webhook على: {webhook_url}")
 
-async def set_webhook():
-    """إعداد الـ Webhook بشكل صحيح (مع await)."""
-    await application.bot.set_webhook(url=WEBHOOK_URL)
-    print(f"🌍 تم تعيين Webhook على: {WEBHOOK_URL}")
-
-# ====== Flask Routes ======
+# ---------------------------
+# Flask Webhook Routes
+# ---------------------------
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
-    """تستقبل التحديثات من Telegram."""
     update = Update.de_json(request.get_json(force=True), application.bot)
     asyncio.run(application.process_update(update))
     return "OK", 200
 
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ البوت يعمل بشكل سليم بإذن الله."
+    return "✅ البوت يعمل على Render بنجاح!"
 
-# ====== تشغيل التطبيق ======
+# ---------------------------
+# بدء التشغيل
+# ---------------------------
 if __name__ == "__main__":
-    # تعيين الـ Webhook عند الإقلاع
-    asyncio.run(set_webhook())
+    asyncio.run(init_telegram_app())
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
