@@ -7,7 +7,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 # تحميل بيانات القرآن من الإنترنت
 url = "https://raw.githubusercontent.com/risan/quran-json/main/data/quran.json"
 response = requests.get(url)
-quran_data = response.json()
+quran_data = response.json()["quran"]  # ✅ هذا هو التعديل المهم
 
 # إنشاء قاموس بالسور وأسمائها
 sura_dict = {sura["name"]: sura for sura in quran_data}
