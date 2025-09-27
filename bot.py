@@ -1,6 +1,13 @@
+import os
+import json
+import requests
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+
+# ✅ تحميل بيانات القرآن من رابط موثوق ومنسق بصيغة JSON صحيحة
 url = "https://cdn.jsdelivr.net/gh/risan/quran-json@main/data/quran.json"
 response = requests.get(url)
-quran_data = json.loads(response.text)  # نحول النص إلى JSON يدويًا
+quran_data = json.loads(response.text)
 
 # 🔹 التأكد أن البيانات قائمة وليست نصًا
 if isinstance(quran_data, dict) and "quran" in quran_data:
@@ -19,8 +26,8 @@ for sura in quran_data:
 # 🕌 أمر /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 مرحباً بك!\n"
-        "أرسل لي اسم السورة ورقم الآية مثل:\n\n"
+        "👋 مرحباً بك في بوت القرآن الكريم!\n\n"
+        "أرسل لي اسم السورة ورقم الآية، مثل:\n"
         "البقرة 255\n"
         "الكهف 10\n"
         "النساء 34"
