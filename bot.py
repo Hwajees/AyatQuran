@@ -25,7 +25,7 @@ quran_data = response.json()
 logger.info(f"✅ تم تحميل القرآن بنجاح! عدد السور: {len(quran_data)}")
 
 # التوكن
-TOKEN = "ضع_هنا_توكن_البوت"
+TOKEN = "7179731919:AAHxZw48ElCJSeCVZUpsG-Pe7Z686qTNV6E"
 
 # رابط الويب هوك
 WEBHOOK_URL = f"https://ayatquran.onrender.com/{TOKEN}"
