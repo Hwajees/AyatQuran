@@ -4,12 +4,12 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-# تحميل بيانات القرآن من الإنترنت
+# تحميل بيانات القرآن من الإنترنت (قائمة سور)
 url = "https://raw.githubusercontent.com/risan/quran-json/main/data/quran.json"
 response = requests.get(url)
-quran_data = response.json()["quran"]  # ✅ هذا هو التعديل المهم
+quran_data = response.json()  # لا يوجد مفتاح 'quran'
 
-# إنشاء قاموس بالسور وأسمائها
+# إنشاء قاموس بالسور وأسمائها بالعربية
 sura_dict = {sura["name"]: sura for sura in quran_data}
 
 # 🕌 أمر /start
