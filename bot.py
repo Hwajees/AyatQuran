@@ -1,72 +1,76 @@
+import os
 import requests
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from flask import Flask
+import threading
+import asyncio
 
 # ==============================
-# 🔹 إعدادات البوت
+# 🔹 إعداد توكن البوت
 # ==============================
-BOT_TOKEN = "ضع_توكن_البوت_هنا"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# ✅ رابط مباشر لملف القرآن الكامل بالعربية (بدون الحاجة لرفع ملف)
-url = "https://raw.githubusercontent.com/semarketir/quranjson/master/source/surah.json"
-response = requests.get(url)
+# ==============================
+# 🔹 تحميل بيانات القرآن (JSON مباشر)
+# ==============================
+QURAN_URL = "https://raw.githubusercontent.com/risan/quran-json/main/quran.json"
+response = requests.get(QURAN_URL)
 quran_data = response.json()
 
+# تحويل البيانات إلى قاموس يسهل البحث فيه
+sura_dict = {sura["name"]: sura for sura in quran_data}
 
 # ==============================
-# 🔹 دالة جلب الآية
+# 🔹 دوال البوت
 # ==============================
-def get_verse(sura_name, aya_number):
-    # تنظيف الاسم (إزالة كلمة سورة والمسافات)
-    sura_name = sura_name.strip().replace("سورة", "").strip()
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "📖 أهلاً بك في بوت القرآن الكريم!\n\n"
+        "أرسل اسم السورة بالعربية مثل:\n"
+        "الأنعام\nالبقرة\nالكهف\n\n"
+        "وسأرسل لك نص السورة كاملًا إن شاء الله 🌙"
+    )
 
-    for sura in quran_data:
-        name = sura["name"].replace("سورة", "").strip()
-        if name == sura_name:
-            verses = sura["verses"]
-            if 1 <= aya_number <= len(verses):
-                return verses[aya_number - 1]["text"]
-            else:
-                return f"❌ رقم الآية غير صحيح. هذه السورة تحتوي على {len(verses)} آيات."
-    
-    return "❌ لم أجد السورة. تأكد من كتابة الاسم الصحيح بالعربية."
+async def get_sura(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_input = update.message.text.strip()
 
+    sura = sura_dict.get(user_input)
+    if sura:
+        verses = [verse["text"] for verse in sura["verses"]]
+        full_text = "\n".join(verses)
+
+        # تجنب تجاوز حدود تيليجرام (4096 حرف)
+        for i in range(0, len(full_text), 4000):
+            await update.message.reply_text(full_text[i:i+4000])
+    else:
+        await update.message.reply_text("❌ لم أجد السورة. تأكد من كتابة الاسم الصحيح بالعربية.")
 
 # ==============================
-# 🔹 عند استقبال رسالة من المستخدم
+# 🔹 Flask server لتشغيل البوت على Render Web Service
 # ==============================
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
+app = Flask(__name__)
 
-    # تقسيم الرسالة إلى جزأين (اسم السورة + رقم الآية)
-    parts = text.split()
-    if len(parts) != 2:
-        await update.message.reply_text("❗ أرسل اسم السورة ورقم الآية فقط مثل:\n\nالبقرة 255\nالكهف 10")
-        return
+@app.route('/')
+def home():
+    return "✅ Quran Bot is running on Render!"
 
-    sura_name = parts[0]
-    try:
-        aya_number = int(parts[1])
-    except ValueError:
-        await update.message.reply_text("❗ رقم الآية يجب أن يكون رقمًا صحيحًا.")
-        return
-
-    # جلب الآية
-    result = get_verse(sura_name, aya_number)
-    await update.message.reply_text(result)
-
+def run_flask():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
 
 # ==============================
 # 🔹 تشغيل البوت
 # ==============================
 async def main():
+    app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_sura))
     print("✅ البوت يعمل الآن على Render...")
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    await app.run_polling()
+    await app_bot.run_polling()
 
-
-# تشغيل التطبيق
 if __name__ == "__main__":
-    import asyncio
+    # تشغيل خادم Flask في خيط منفصل
+    threading.Thread(target=run_flask).start()
+
+    # تشغيل البوت
     asyncio.run(main())
