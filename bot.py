@@ -1,92 +1,80 @@
+import os
 import json
 import requests
 from flask import Flask, request
-import os
+from telegram import Bot, Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# تحميل بيانات القرآن
+# ===== إعداد الأساسيات =====
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    print("❌ لم يتم العثور على توكن البوت! أضفه في إعدادات Render كـ BOT_TOKEN")
+    exit()
+
+bot = Bot(TOKEN)
+app = Flask(__name__)
+
 QURAN_URL = "https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/quran.json"
-print("⏳ تحميل بيانات القرآن من:", QURAN_URL)
+
+print(f"⏳ تحميل بيانات القرآن من: {QURAN_URL}")
 quran_data = requests.get(QURAN_URL).json()
 print(f"✅ تم تحميل القرآن بنجاح! عدد السور: {len(quran_data)}")
 
-# إنشاء تطبيق Flask
-app = Flask(__name__)
+# ===== البحث عن آية =====
+def find_ayah(surah_name, ayah_number):
+    for surah in quran_data:
+        if surah["name"].strip() == surah_name.strip():
+            for ayah in surah["verses"]:
+                if ayah["id"] == int(ayah_number):
+                    return ayah["text"]
+    return None
 
-# قراءة التوكن من المتغير البيئي
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    TOKEN = "7179731919:AAHxZw48ElCJSeCVZUpsG-Pe7Z686qTNV6E"
-print(f"✅ تم قراءة التوكن بنجاح: {TOKEN[:10]}********")
+# ===== المعالجة =====
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
 
-BASE_URL = f"https://api.telegram.org/bot{TOKEN}"
+    # تجاهل أوامر start
+    if text.lower() in ["/start", "start", "ابدا"]:
+        await update.message.reply_text("👋 مرحبًا! أرسل اسم السورة ورقم الآية مثل:\n\nالبقرة 255")
+        return
 
-# تعيين Webhook
-WEBHOOK_URL = f"https://ayatquran.onrender.com/{TOKEN}"
-set_hook = requests.get(f"{BASE_URL}/setWebhook?url={WEBHOOK_URL}")
-print("🌍 تعيين Webhook على:", WEBHOOK_URL)
-print("🔗 نتيجة:", set_hook.text)
-
-
-# إرسال رسالة
-def send_message(chat_id, text):
-    requests.post(f"{BASE_URL}/sendMessage", json={"chat_id": chat_id, "text": text})
-
-
-# نقطة الاستقبال (بدون async)
-@app.route(f"/{TOKEN}", methods=["POST"])
-def receive_update():
-    update = request.get_json()
-
-    if not update:
-        return "No update", 400
-
-    message = update.get("message")
-    if not message:
-        return "No message", 200
-
-    chat_id = message["chat"]["id"]
-    text = message.get("text", "").strip()
-
-    if not text:
-        send_message(chat_id, "أرسل اسم السورة ورقم الآية مثل: البقرة 255")
-        return "ok", 200
-
-    # تحليل المدخل
+    # تقسيم النص
     parts = text.split()
     if len(parts) != 2:
-        send_message(chat_id, "اكتب بصيغة صحيحة مثل: البقرة 255")
-        return "ok", 200
+        await update.message.reply_text("❗ اكتب بصيغة صحيحة مثل: البقرة 255")
+        return
 
-    surah_name, ayah_number = parts[0], parts[1]
+    surah_name, ayah_num = parts
 
-    try:
-        ayah_number = int(ayah_number)
-    except ValueError:
-        send_message(chat_id, "رقم الآية يجب أن يكون عددًا صحيحًا.")
-        return "ok", 200
+    # تحقق أن رقم الآية رقم فعلاً
+    if not ayah_num.isdigit():
+        await update.message.reply_text("❗ رقم الآية يجب أن يكون رقمًا، مثل: البقرة 255")
+        return
 
-    # البحث عن السورة
-    surah = next((s for s in quran_data if s["name"] == surah_name or s["englishName"].lower() == surah_name.lower()), None)
-    if not surah:
-        send_message(chat_id, f"لم أجد سورة باسم {surah_name}")
-        return "ok", 200
+    ayah_text = find_ayah(surah_name, ayah_num)
+    if ayah_text:
+        await update.message.reply_text(f"📖 {surah_name} ({ayah_num})\n\n{ayah_text}")
+    else:
+        await update.message.reply_text("❌ لم يتم العثور على السورة أو الآية. تأكد من الكتابة الصحيحة.")
 
-    # البحث عن الآية
-    if ayah_number < 1 or ayah_number > len(surah["verses"]):
-        send_message(chat_id, f"السورة {surah_name} تحتوي على {len(surah['verses'])} آيات فقط.")
-        return "ok", 200
+# ===== إعداد التطبيق =====
+application = Application.builder().token(TOKEN).build()
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    ayah = surah["verses"][ayah_number - 1]
-    text_ar = ayah["text"]
-    send_message(chat_id, f"{surah_name} - آية {ayah_number}:\n{text_ar}")
-
+# ===== إعداد Webhook =====
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    application.update_queue.put_nowait(update)
     return "ok", 200
 
-
-@app.route("/")
+@app.route("/", methods=["GET"])
 def home():
-    return "بوت آيات القرآن يعمل ✅", 200
+    return "🤖 Quran Bot is Running!"
 
-
+# ===== تشغيل البوت =====
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
+    WEBHOOK_URL = f"https://ayatquran.onrender.com/{TOKEN}"
+    bot.set_webhook(url=WEBHOOK_URL)
+    print(f"🌍 تم تعيين Webhook على: {WEBHOOK_URL}")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
