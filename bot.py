@@ -51,6 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
+
 # ==========================
 # البحث عن السورة أو الآية
 # ==========================
@@ -117,10 +118,11 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_m
 app = Flask(__name__)
 
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-async def webhook():
+def webhook():
+    """نستخدم sync view هنا لتجنب خطأ Flask async"""
     data = request.get_json(force=True)
     update = Update.de_json(data, application.bot)
-    await application.process_update(update)
+    asyncio.run(application.process_update(update))
     return "OK", 200
 
 @app.route("/")
