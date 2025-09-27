@@ -69,30 +69,20 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_m
 # === Flask Routes ===
 
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    """يستقبل التحديثات من Telegram"""
+def receive_update():
     try:
-        update_data = request.get_json(force=True)
-        update = Update.de_json(update_data, application.bot)
-        application.update_queue.put_nowait(update)
+        update = Update.de_json(request.get_json(force=True), bot)
+        asyncio.run(application.process_update(update))
     except Exception as e:
-        logger.error(f"❌ خطأ في معالجة التحديث: {e}")
-        return "error", 500
-    return "ok", 200
+        print(f"❌ خطأ أثناء معالجة التحديث: {e}")
+        return "Internal Server Error", 500
+    return "OK", 200
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ البوت يعمل على Render بنجاح!"
+    return "✅ البوت يعمل الآن ويستقبل الرسائل عبر Telegram!", 200
 
 
-# === إعداد Webhook عند بدء التشغيل ===
 if __name__ == "__main__":
-    from telegram import Bot
-
-    bot = Bot(token=BOT_TOKEN)
-    webhook_url = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
-    bot.set_webhook(url=webhook_url)
-    logger.info(f"🌍 تم تعيين Webhook على: {webhook_url}")
-
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
