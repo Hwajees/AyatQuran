@@ -1,16 +1,20 @@
-import os
-import json
-import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-
-# تحميل بيانات القرآن من الإنترنت (قائمة سور)
-url = "https://raw.githubusercontent.com/risan/quran-json/main/data/quran.json"
+url = "https://cdn.jsdelivr.net/gh/risan/quran-json@main/data/quran.json"
 response = requests.get(url)
-quran_data = response.json()  # لا يوجد مفتاح 'quran'
+quran_data = json.loads(response.text)  # نحول النص إلى JSON يدويًا
 
-# إنشاء قاموس بالسور وأسمائها بالعربية
-sura_dict = {sura["name"]: sura for sura in quran_data}
+# 🔹 التأكد أن البيانات قائمة وليست نصًا
+if isinstance(quran_data, dict) and "quran" in quran_data:
+    quran_data = quran_data["quran"]
+
+# 🔹 إنشاء قاموس باسم السورة بالعربية
+sura_dict = {}
+for sura in quran_data:
+    try:
+        name = sura.get("name", "").strip()
+        if name:
+            sura_dict[name] = sura
+    except Exception:
+        continue
 
 # 🕌 أمر /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
