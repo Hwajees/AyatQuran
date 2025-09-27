@@ -89,5 +89,21 @@ async def main():
     await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    import logging
+    import telegram.ext
+
+    logging.basicConfig(level=logging.INFO)
+    token = os.getenv("TOKEN")
+
+    if not token:
+        print("❌ لم يتم العثور على TOKEN في المتغيرات البيئية.")
+    else:
+        print("✅ البوت يعمل الآن على Render...")
+
+        app = ApplicationBuilder().token(token).build()
+
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+        # 🚀 تشغيل مباشر بدون asyncio.run()
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
