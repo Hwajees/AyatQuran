@@ -24,7 +24,6 @@ except Exception as e:
     print("❌ فشل تحميل ملف القرآن:", e)
     exit()
 
-# تجهيز القاموس
 quran_dict = {sura["name"]: sura for sura in quran_data}
 
 # ==========================
@@ -43,7 +42,7 @@ print(f"✅ تم قراءة التوكن بنجاح: {BOT_TOKEN[:8]}********")
 application = Application.builder().token(BOT_TOKEN).build()
 
 # ==========================
-# الأوامر والمعالجات
+# المعالجات
 # ==========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -66,7 +65,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         sura = quran_dict.get(sura_name)
         if not sura:
-            await update.message.reply_text("❌ لم أجد السورة، تأكد من كتابة الاسم الصحيح بالعربية.")
+            await update.message.reply_text("❌ لم أجد السورة. تأكد من كتابة الاسم الصحيح بالعربية.")
             return
 
         ayahs = sura["ayahs"]
@@ -103,7 +102,8 @@ def home():
 def set_webhook():
     webhook_url = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
     print(f"🌍 تعيين Webhook على: {webhook_url}")
-    application.bot.set_webhook(webhook_url)
+    import asyncio
+    asyncio.run(application.bot.set_webhook(webhook_url))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000)))
