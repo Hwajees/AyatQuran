@@ -1,6 +1,7 @@
 import os
 import requests
 import asyncio
+import re
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -33,33 +34,57 @@ app = Flask(__name__)
 application = Application.builder().token(BOT_TOKEN).build()
 
 # ---------------------------
+# دالة مساعدة لتنظيف الاسم
+# ---------------------------
+def normalize_surah_name(name: str) -> str:
+    name = re.sub(r'[^\w\s]', '', name)  # إزالة الرموز
+    name = name.replace("سورة", "").strip().lower()  # إزالة كلمة "سورة"
+    return name
+
+# ---------------------------
 # الأوامر
 # ---------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 أهلاً بك في بوت آيات القرآن!\nأرسل اسم السورة ورقم الآية مثل:\nالبقرة 255")
+    await update.message.reply_text(
+        "👋 أهلاً بك في بوت آيات القرآن الكريم!\n\n"
+        "📖 طريقة الاستخدام:\n"
+        "أرسل اسم السورة متبوعًا برقم الآية، مثل:\n\n"
+        "البقرة 255\n"
+        "الكهف 10\n"
+        "يوسف 4"
+    )
 
 async def get_ayah(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    parts = text.split()
 
+    # تجاهل أوامر /start أو أي أمر آخر
+    if text.startswith("/"):
+        return
+
+    parts = text.split()
     if len(parts) != 2:
         await update.message.reply_text("❌ اكتب بصيغة صحيحة مثل: البقرة 255")
         return
 
-    surah_name, ayah_number = parts[0], parts[1]
+    surah_name_input, ayah_number = parts[0], parts[1]
 
     if not ayah_number.isdigit():
         await update.message.reply_text("❌ رقم الآية يجب أن يكون رقمًا.")
         return
 
+    normalized_input = normalize_surah_name(surah_name_input)
+
     for surah in quran_data:
-        if surah["name"].strip() == surah_name.strip():
+        normalized_surah_name = normalize_surah_name(surah["name"])
+        if normalized_surah_name == normalized_input:
             for ayah in surah["verses"]:
                 if int(ayah["id"]) == int(ayah_number):
                     await update.message.reply_text(f"📖 {ayah['text']}")
                     return
+            await update.message.reply_text("⚠️ لم أجد هذه الآية في السورة.")
+            return
 
-    await update.message.reply_text("⚠️ لم أجد السورة أو الآية المطلوبة. تأكد من الاسم والرقم.")
+    await update.message.reply_text("⚠️ لم أجد السورة المطلوبة. تأكد من الاسم.")
 
 # ---------------------------
 # تسجيل الأوامر
@@ -71,7 +96,6 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_ayah
 # تهيئة التطبيق عند بدء السيرفر
 # ---------------------------
 async def init_telegram_app():
-    """تهيئة وتشغيل تطبيق Telegram عند بدء Flask."""
     await application.initialize()
     await application.start()
     webhook_url = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
