@@ -111,20 +111,22 @@ def home():
     return "✅ Quran bot is running!"
 
 # 🔹 Webhook لمعالجة التحديثات
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+@app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, application.bot)
+    update = Update.de_json(request.get_json(force=True), application.bot)
 
     async def process():
         try:
             await application.initialize()
-        except RuntimeError:
-            pass  # إذا تم التهيئة مسبقًا
-        await application.process_update(update)
+            await application.process_update(update)
+        except Exception as e:
+            logging.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
 
-    asyncio.run(process())
-    return "ok", 200
+    # تشغيل المعالجة في الخلفية دون إغلاق الحلقة
+    loop = asyncio.get_event_loop()
+    loop.create_task(process())
+
+    return "OK", 200
 
 # 🔹 بدء التشغيل
 if __name__ == "__main__":
