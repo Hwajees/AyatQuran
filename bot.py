@@ -111,7 +111,7 @@ def home():
     return "✅ Quran bot is running!"
 
 # 🔹 Webhook لمعالجة التحديثات
-@app.route(f'/{TOKEN}', methods=['POST'])
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
 
