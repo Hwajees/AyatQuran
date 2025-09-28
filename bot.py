@@ -62,7 +62,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = text.split()
 
         if len(parts) != 2:
-            await update.message.reply_text("⚠️ أرسل اسم السورة متبوعًا برقم الآية مثل:\n`البقرة 255`", parse_mode="Markdown")
+            await update.message.reply_text(
+                "⚠️ أرسل اسم السورة متبوعًا برقم الآية مثل:\n`البقرة 255`",
+                parse_mode="Markdown"
+            )
             return
 
         surah_name, ayah_number = parts[0], parts[1]
@@ -91,6 +94,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ خطأ أثناء المعالجة: {e}")
         await update.message.reply_text("حدث خطأ أثناء المعالجة، حاول مرة أخرى لاحقًا.")
 
-# إضافة المعالجات
+# ✅ إضافة المعالجات
 application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handl_
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+# 🌐 نقطة استقبال Webhook
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook_handler():
+    try:
+        update = Update.de_json(request.get_json(force=True), application.bot)
+        application.create_task(application.process_update(update))
+    except Exception as e:
+        logger.exception(f"❌ خطأ أثناء المعالجة: {e}")
+        return "error", 500
+    return "ok", 200
+
+# 🔹 صفحة فحص بسيطة
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ Quran Bot is running", 200
+
+# 🚀 تشغيل التطبيق محليًا (في Render يتم استخدام gunicorn)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
