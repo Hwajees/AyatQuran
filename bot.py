@@ -83,10 +83,10 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_ayah
 
 # Webhook route
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
-async def webhook():
+def webhook():
     data = request.get_json(force=True)
     update = Update.de_json(data, application.bot)
-    await application.process_update(update)
+    asyncio.run(application.process_update(update))
     return "ok", 200
 
 # الصفحة الرئيسية
