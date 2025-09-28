@@ -1,136 +1,102 @@
 import os
 import json
 import logging
+import requests
 import asyncio
-import re
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-# ==============================
 # إعداد السجلّات (Logs)
-# ==============================
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger("ayatquran-bot")
 
-# ==============================
-# إعداد البوت و Flask
-# ==============================
-TOKEN = os.environ.get("BOT_TOKEN") or "ضع_التوكن_الخاص_بك_هنا"
-application = Application.builder().token(TOKEN).build()
+# تحميل بيانات القرآن من ملف JSON أو من الإنترنت
+QURAN_DATA = None
+QURAN_URL = "https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/quran.json"
+
+def load_quran_data():
+    global QURAN_DATA
+    try:
+        if os.path.exists("surah_data.json"):
+            with open("surah_data.json", "r", encoding="utf-8") as f:
+                QURAN_DATA = json.load(f)
+                logger.info("✅ تم تحميل القرآن من الملف المحلي.")
+        else:
+            logger.info(f"⏳ تحميل بيانات القرآن من: {QURAN_URL}")
+            response = requests.get(QURAN_URL)
+            QURAN_DATA = response.json()
+            logger.info("✅ تم تحميل القرآن من الإنترنت.")
+    except Exception as e:
+        logger.error(f"❌ فشل تحميل بيانات القرآن: {e}")
+        QURAN_DATA = []
+
+load_quran_data()
+
+# إعداد بوت التلغرام
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("❌ لم يتم العثور على متغير BOT_TOKEN في البيئة.")
+
+application = Application.builder().token(BOT_TOKEN).build()
+
+# أوامر البوت
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🌸 مرحبًا! أرسل لي اسم سورة أو رقم آية لأعرضها لك من القرآن الكريم.")
+
+async def get_ayah(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip()
+    result = None
+
+    # البحث بالاسم أو الرقم
+    for surah in QURAN_DATA:
+        if surah["name"].replace("سورة ", "") == query or surah["name"] == query or str(surah["number"]) == query:
+            result = f"📖 {surah['name']}\n\n"
+            for ayah in surah["ayahs"][:5]:  # عرض أول 5 آيات فقط
+                result += f"{ayah['number']}. {ayah['text']}\n"
+            break
+
+    if result:
+        await update.message.reply_text(result)
+    else:
+        await update.message.reply_text("❌ لم أجد السورة أو الآية المطلوبة. حاول مرة أخرى.")
+
+# إضافة المعالجات
+application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_ayah))
+
+# إنشاء Flask للتعامل مع Webhook
 app = Flask(__name__)
 
-# ==============================
-# تحميل ملف JSON للسور
-# ==============================
-with open("surah_data.json", "r", encoding="utf-8") as f:
-    SURAH_DATA = json.load(f)
+@app.route("/")
+def home():
+    return "✅ البوت يعمل على Render!", 200
 
-# ==============================
-# دالة مساعدة: تنظيف اسم السورة
-# ==============================
-def normalize_surah_name(name: str) -> str:
-    """تحويل الاسم إلى صيغة قياسية للمقارنة الذكية"""
-    name = name.strip().lower()
-    name = re.sub(r"[ًٌٍَُِّْـٰ]", "", name)  # حذف التشكيل
-    name = name.replace("سوره", "").replace("سورة", "").strip()  # حذف كلمة "سورة"
-    return name
-
-# ==============================
-# دالة مساعدة: البحث عن السورة
-# ==============================
-def find_surah_by_name(name: str):
-    name = normalize_surah_name(name)
-    for surah in SURAH_DATA:
-        surah_name = normalize_surah_name(surah["name"])
-        if surah_name == name:
-            return surah
-    return None
-
-# ==============================
-# أوامر البوت
-# ==============================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """شرح البرنامج فقط عند البدء"""
-    msg = (
-        "👋 مرحبًا بك في *بوت آيات القرآن الكريم* 🌿\n\n"
-        "📖 يمكنك كتابة اسم السورة ورقم الآية مثل:\n"
-        "› البقرة 255\n"
-        "› الكهف 10\n\n"
-        "💡 سيقوم البوت بجلب الآية وقراءتها صوتيًا بإذن الله."
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """التعامل مع إدخال المستخدم"""
-    text = update.message.text.strip()
-
-    # محاولة استخراج الاسم والرقم
-    parts = text.split()
-    if len(parts) != 2:
-        await update.message.reply_text("❌ الرجاء كتابة: اسم السورة متبوعًا برقم الآية مثل:\nالبقرة 255")
-        return
-
-    surah_name, ayah_number = parts[0], parts[1]
-
-    if not ayah_number.isdigit():
-        await update.message.reply_text("❌ رقم الآية يجب أن يكون رقمًا صحيحًا.")
-        return
-
-    surah = find_surah_by_name(surah_name)
-    if not surah:
-        await update.message.reply_text("❌ لم أتمكن من العثور على السورة، تأكد من الاسم.")
-        return
-
-    surah_number = surah["number"]
-    api_url = f"https://api.alquran.cloud/v1/ayah/{surah_number}:{ayah_number}/ar.alafasy"
-
-    import requests
-    response = requests.get(api_url)
-
-    if response.status_code != 200:
-        await update.message.reply_text("⚠️ حدث خطأ أثناء جلب البيانات من الخادم.")
-        return
-
-    data = response.json()
-    if data["status"] != "OK":
-        await update.message.reply_text("❌ لم يتم العثور على الآية المطلوبة.")
-        return
-
-    ayah = data["data"]["text"]
-    audio = data["data"]["audio"]
-
-    await update.message.reply_text(f"📖 {ayah}")
-    await update.message.reply_audio(audio, caption=f"🎧 تلاوة من سورة {surah['name']} - الآية {ayah_number}")
-
-# ==============================
-# ربط الأوامر
-# ==============================
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-# ==============================
-# Webhook (Flask)
-# ==============================
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook_handler():
     try:
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        asyncio.run(application.process_update(update))  # ✅ الإصلاح هنا
+        data = request.get_json(force=True)
+        update = Update.de_json(data, application.bot)
+
+        # تهيئة التطبيق قبل المعالجة
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(application.initialize())  # ✅ الحل هنا
+        loop.run_until_complete(application.process_update(update))
+        return "ok", 200
+
     except Exception as e:
-        logger.exception(f"❌ خطأ أثناء المعالجة: {e}")
+        logger.error(f"❌ خطأ أثناء المعالجة: {e}", exc_info=True)
         return "error", 500
-    return "ok", 200
 
-@app.route("/", methods=["GET"])
-def home():
-    return "Ayat Quran Bot is running 🕌", 200
 
-# ==============================
-# تشغيل التطبيق محليًا (اختياري)
-# ==============================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    # تعيين Webhook عند التشغيل المحلي
+    WEBHOOK_URL = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
+    asyncio.run(application.bot.set_webhook(url=WEBHOOK_URL))
+    logger.info(f"🌍 تم تعيين Webhook على: {WEBHOOK_URL}")
+
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
