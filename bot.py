@@ -101,12 +101,16 @@ def webhook():
     update = Update.de_json(data, application.bot)
 
     # 🔹 إصلاح الخطأ: التأكد من تهيئة التطبيق قبل المعالجة
-    async def process():
-        if not application.initialized:
-            await application.initialize()
-        await application.process_update(update)
+async def process():
+    try:
+        # نقوم بتهيئة التطبيق إذا لم يكن مهيأً
+        await application.initialize()
+    except RuntimeError:
+        # إذا كان مهيأً مسبقًا، نتجاهل الخطأ
+        pass
+    await application.process_update(update)
 
-    asyncio.run(process())
+asyncio.run(process())
     return "ok", 200
 
 @app.route("/", methods=["GET"])
