@@ -25,12 +25,12 @@ app = Flask(__name__)
 # تحميل بيانات السور
 def load_surah_data():
     try:
-        with open("surah_data.json", "r", encoding="utf-8") as f:
+        with open("surah_data.JSON", "r", encoding="utf-8") as f:
             data = json.load(f)
-        logger.info("✅ تم تحميل surah_data.json بنجاح.")
+        logger.info("✅ تم تحميل surah_data.JSON بنجاح.")
         return data
     except Exception as e:
-        logger.error(f"❌ خطأ في تحميل surah_data.json: {e}")
+        logger.error(f"❌ خطأ في تحميل surah_data.JSON: {e}")
         return []
 
 surah_data = load_surah_data()
