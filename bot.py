@@ -1,24 +1,26 @@
 import os
 import json
 import logging
+import asyncio
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 # إعداد السجل
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("bot")
+logger = logging.getLogger("quran-bot")
 
-# قراءة التوكن من البيئة
+# قراءة التوكن
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("❌ لم يتم تعيين متغير BOT_TOKEN في Render.")
 
-# إنشاء تطبيق التلغرام
+# إنشاء التطبيق
 application = Application.builder().token(BOT_TOKEN).build()
 
-# Flask App
+# إنشاء تطبيق Flask
 app = Flask(__name__)
+
 
 # تحميل بيانات السور
 def load_surah_data():
