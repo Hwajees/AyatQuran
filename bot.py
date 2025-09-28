@@ -22,15 +22,19 @@ WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}"
 QURAN_URL = "https://cdn.jsdelivr.net/npm/quran-json@3.1.2/dist/quran.json"
 logger.info("⏳ تحميل القرآن الكريم...")
 quran_data = httpx.get(QURAN_URL).json()
-logger.info(f"✅ تم تحميل القرآن بنجاح: {len(quran_data)} سورة")
+logger.info(f"✅ تم تحميل القرآن بنجاح! عدد السور: {len(quran_data)}")
 
-# إنشاء تطبيق Telegram
-application = Application.builder().token(BOT_TOKEN).build()
-
-# Flask app
+# إنشاء تطبيق Flask
 app = Flask(__name__)
 
-# أمر البدء
+# إنشاء loop خاص بالتطبيق
+bot_loop = asyncio.new_event_loop()
+
+# إنشاء تطبيق Telegram bot داخل هذا loop
+application = Application.builder().token(BOT_TOKEN).build()
+
+
+# === أوامر البوت ===
 async def start(update, context):
     text = (
         "👋 *مرحبًا بك في بوت آيات القرآن الكريم*\n\n"
@@ -42,13 +46,16 @@ async def start(update, context):
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# معالجة الرسائل
+
 async def handle_message(update, context):
     msg = update.message.text.strip()
     parts = msg.split()
 
     if len(parts) != 2:
-        await update.message.reply_text("❌ يرجى كتابة اسم السورة ورقم الآية فقط مثل:\n`الكهف 10`", parse_mode="Markdown")
+        await update.message.reply_text(
+            "❌ يرجى كتابة اسم السورة ورقم الآية فقط مثل:\n`الكهف 10`",
+            parse_mode="Markdown",
+        )
         return
 
     surah_name, verse_str = parts
@@ -71,36 +78,38 @@ async def handle_message(update, context):
     except ValueError:
         await update.message.reply_text("❌ رقم الآية غير صحيح.")
 
-# إضافة المعالجات
+
+# === إضافة المعالجات ===
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# مسار الـ webhook
+
+# === مسارات Flask ===
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ Bot is running on Render."
+
+
 @app.route(WEBHOOK_PATH, methods=["POST"])
 def webhook_handler():
     try:
         data = request.get_json(force=True)
         update = Update.de_json(data, application.bot)
-
-        # إرسال التحديث إلى التطبيق بطريقة آمنة داخل الـ loop
-        asyncio.run_coroutine_threadsafe(application.process_update(update), application.loop)
+        asyncio.run_coroutine_threadsafe(application.process_update(update), bot_loop)
         return "ok", 200
     except Exception as e:
         logger.exception(f"❌ خطأ أثناء المعالجة: {e}")
         return "error", 500
 
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ Bot is running on Render."
 
-# تشغيل البوت في خيط منفصل
+# === تشغيل البوت في خيط منفصل ===
 def run_bot():
-    logger.info("🚀 تشغيل تطبيق Telegram bot في الخلفية...")
-    asyncio.run(application.bot.set_webhook(url=WEBHOOK_URL))
-    application.run_polling(stop_signals=None)
+    asyncio.set_event_loop(bot_loop)
+    bot_loop.run_until_complete(application.bot.set_webhook(url=WEBHOOK_URL))
+    logger.info(f"🌍 Webhook set to: {WEBHOOK_URL}")
+    bot_loop.run_forever()
 
-# بدء التشغيل
+
 if __name__ == "__main__":
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.start()
+    threading.Thread(target=run_bot, daemon=True).start()
     app.run(host="0.0.0.0", port=10000)
