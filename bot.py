@@ -95,13 +95,22 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_m
 def home():
     return "بوت القرآن يعمل ✅"
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
     try:
-        asyncio.run(application.process_update(update))
+        update = Update.de_json(request.get_json(force=True), application.bot)
+
+        async def process_update():
+            # ✅ تأكد من تهيئة التطبيق قبل معالجة التحديث
+            if not application._initialized:
+                await application.initialize()
+            await application.process_update(update)
+
+        asyncio.create_task(process_update())
+
     except Exception as e:
-        logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
+        logging.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
+
     return "OK", 200
 
 # ---------------- التشغيل ---------------- #
