@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import asyncio
+import os
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -11,7 +12,6 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
-import os
 
 # إعداد السجلات
 logging.basicConfig(level=logging.INFO)
@@ -30,13 +30,12 @@ except Exception as e:
 # إعداد Flask
 app = Flask(__name__)
 
-# استيراد التوكن من متغير البيئة
+# توكن البوت من متغير البيئة
 TOKEN = os.getenv("BOT_TOKEN")
-
 if not TOKEN:
-    raise ValueError("❌ لم يتم العثور على BOT_TOKEN في متغيرات البيئة.")
+    raise ValueError("❌ BOT_TOKEN غير موجود في متغيرات البيئة")
 
-# إنشاء تطبيق تيليجرام
+# إنشاء تطبيق التيليجرام
 application = Application.builder().token(TOKEN).build()
 
 # دالة البحث عن الآية
@@ -82,7 +81,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# مسار webhook
+# ✅ مسار Webhook المعدّل
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     try:
@@ -93,7 +92,12 @@ def webhook():
                 await application.initialize()
             await application.process_update(update)
 
-        asyncio.run(process_update())
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(process_update())
+        else:
+            asyncio.run(process_update())
+
     except Exception as e:
         logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
     return "OK", 200
