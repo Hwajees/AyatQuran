@@ -11,26 +11,26 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 🔹 إعداد Flask للرئيسية
+# 🔹 Flask للرئيسية فقط
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "✅ Quran Bot is running and healthy!"
 
-# 🔹 قراءة التوكن والمنفذ
+# 🔹 إعداد المتغيرات
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", 10000))
 WEBHOOK_URL = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
 
 if not BOT_TOKEN:
-    raise ValueError("❌ لم يتم تحديد BOT_TOKEN في متغيرات البيئة")
+    raise ValueError("❌ BOT_TOKEN غير موجود في إعدادات Render")
 
-# 🔹 تحميل ملف السور
+# 🔹 تحميل بيانات السور
 try:
     with open("surah_data.JSON", "r", encoding="utf-8") as f:
         quran_data = json.load(f)
-        logger.info("✅ تم تحميل بيانات السور")
+        logger.info("✅ تم تحميل بيانات السور بنجاح")
 except Exception as e:
     logger.error(f"❌ خطأ في تحميل ملف السور: {e}")
     quran_data = []
@@ -75,16 +75,19 @@ application = Application.builder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# 🔹 تشغيل Flask والبوت معًا على نفس المنفذ
+# 🔹 تشغيل Flask والبوت على منفذين مختلفين
 def run_flask():
-    app.run(host="0.0.0.0", port=PORT)
+    app.run(host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
+    # Flask (للرابط الصحي)
     threading.Thread(target=run_flask).start()
-    logger.info("🚀 بدء تشغيل البوت على Render باستخدام Webhook ...")
+
+    # البوت (Webhook)
+    logger.info("🚀 بدء تشغيل البوت عبر Webhook ...")
     application.run_webhook(
         listen="0.0.0.0",
-        port=PORT,
+        port=PORT,  # المنفذ الذي يخصصه Render للبوت
         url_path=BOT_TOKEN,
         webhook_url=WEBHOOK_URL,
     )
