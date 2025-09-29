@@ -105,8 +105,11 @@ def webhook():
                 await application.initialize()
             await application.process_update(update)
 
-        # ✅ الحل النهائي: تشغيل الـ coroutine يدوياً في event loop جديدة
-        asyncio.run(process_update())
+        # ✅ استخدم حلقة جديدة لكل تحديث (لا تغلق القديمة)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(process_update())
+        loop.close()
 
     except Exception as e:
         logging.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
