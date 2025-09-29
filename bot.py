@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import re
@@ -12,37 +13,36 @@ from telegram.ext import (
     filters
 )
 
-# ===== إعداد السجلات =====
+# إعداد السجلات
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("quran-bot")
 
-# ===== تحميل بيانات القرآن =====
+# تحميل ملف السور
 try:
     with open("surah_data.JSON", "r", encoding="utf-8") as f:
         quran_data = json.load(f)
-    logger.info("✅ تم تحميل بيانات السور بنجاح")
+        logger.info("✅ تم تحميل بيانات السور")
 except Exception as e:
     logger.error(f"❌ خطأ في تحميل ملف السور: {e}")
     quran_data = []
 
-# ===== إنشاء Flask =====
+# إنشاء Flask
 app = Flask(__name__)
 
-# ===== إعداد التوكن =====
-import os
+# قراءة التوكن من البيئة
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise ValueError("❌ لم يتم تعيين متغير BOT_TOKEN في Render")
+    raise ValueError("❌ BOT_TOKEN غير موجود في متغيرات البيئة")
 
-# ===== إنشاء تطبيق تيليجرام =====
+# إنشاء تطبيق التيليجرام
 application = Application.builder().token(BOT_TOKEN).build()
 
-# ===== أوامر البوت =====
+# أوامر البوت
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 مرحبًا بك في بوت آيات القرآن الكريم\n\n"
-        "أرسل اسم السورة ورقم الآية مثل:\n\n"
-        "📖 البقرة 255\n📖 آل عمران 8"
+        "👋 مرحبًا بك في بوت آيات القرآن الكريم!\n\n"
+        "أرسل اسم السورة متبوعًا برقم الآية مثل:\n\n"
+        "📖 البقرة 255\n📖 الكهف 10"
     )
 
 def find_ayah(surah_name, ayah_id):
@@ -56,43 +56,47 @@ def find_ayah(surah_name, ayah_id):
     return None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    match = re.match(r"([\u0621-\u064A\s]+)\s+(\d+)", text)
-    if not match:
-        await update.message.reply_text("❗ أرسل اسم السورة متبوعًا برقم الآية، مثل: البقرة 255")
-        return
-    surah_name, ayah_id = match.groups()
-    result = find_ayah(surah_name, ayah_id)
-    if result:
-        await update.message.reply_text(result)
-    else:
-        await update.message.reply_text("❌ لم أجد هذه الآية. تحقق من الاسم أو الرقم.")
+    try:
+        text = update.message.text.strip()
+        match = re.match(r"([\u0621-\u064A\s]+)\s+(\d+)", text)
+        if not match:
+            await update.message.reply_text("❗ أرسل اسم السورة متبوعًا برقم الآية مثل: البقرة 255")
+            return
 
-# ===== ربط الأوامر =====
+        surah_name, ayah_id = match.groups()
+        result = find_ayah(surah_name, ayah_id)
+
+        if result:
+            await update.message.reply_text(result)
+        else:
+            await update.message.reply_text("❌ لم أجد هذه الآية. تأكد من الاسم والرقم.")
+    except Exception as e:
+        logger.error(f"⚠️ خطأ أثناء معالجة الرسالة: {e}")
+        await update.message.reply_text("حدث خطأ غير متوقع 😔")
+
+# ربط الأوامر
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# ===== إنشاء Event Loop ثابت =====
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
+# Event loop ثابت
+loop = asyncio.get_event_loop()
 
-# ===== استقبال التحديثات من تيليجرام =====
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
     try:
         data = request.get_json(force=True)
         update = Update.de_json(data, application.bot)
         logger.info(f"📩 تم استلام تحديث جديد: {data}")
-        loop.create_task(application.process_update(update))
+        asyncio.run_coroutine_threadsafe(application.process_update(update), loop)
     except Exception as e:
-        logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
+        logger.error(f"❌ خطأ في المعالجة: {e}")
     return "OK", 200
 
 @app.route("/")
 def home():
-    return "🌙 بوت القرآن الكريم يعمل بنجاح!"
+    return "✅ بوت آيات القرآن الكريم يعمل على Render بنجاح!"
 
-# ===== تشغيل السيرفر =====
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
+    logger.info(f"🚀 بدء السيرفر على المنفذ {port}")
     app.run(host="0.0.0.0", port=port)
