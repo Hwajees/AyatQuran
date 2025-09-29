@@ -1,343 +1,113 @@
 import json
 import logging
 import re
+import os
 import asyncio
 from flask import Flask, request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# إعداد السجلّات
+# ---------------- إعداد السجل ---------------- #
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("quran-bot")
 
-# تحميل ملف القرآن (لاحظ JSON الكبير)
-try:
-    with open("surah_data.JSON", "r", encoding="utf-8") as f:
-        quran_data = json.load(f)
-    logger.info("✅ تم تحميل surah_data.JSON بنجاح.")
-except Exception as e:
-    logger.error(f"❌ فشل تحميل ملف surah_data.JSON: {e}")
-    quran_data = []
+# ---------------- إعداد البوت ---------------- #
+TOKEN = os.getenv("BOT_TOKEN", "7179731919:AAHxZw48ElCJSeCVZUpsG-Pe7Z686qTNV6E")
+PORT = int(os.getenv("PORT", 10000))
+WEBHOOK_URL = f"https://ayatquran.onrender.com/{TOKEN}"
 
-# تهيئة Flask
 app = Flask(__name__)
 
-# ضع التوكن الخاص بالبوت هنا أو كمتغير بيئة في Render
-TOKEN = "ضع_التوكن_هنا"
+# ---------------- تحميل ملف JSON ---------------- #
+DATA_FILE = "surah_data.JSON"
+try:
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        surah_data = json.load(f)
+    logger.info(f"✅ تم تحميل {DATA_FILE} بنجاح.")
+except Exception as e:
+    logger.error(f"❌ خطأ في تحميل {DATA_FILE}: {e}")
+    surah_data = []
 
-# إنشاء التطبيق الخاص بالبوت
-application = Application.builder().token(TOKEN).build()
+# ---------------- دالة لتوحيد الأسماء ---------------- #
+def normalize_name(name):
+    name = name.strip().lower()
+    name = re.sub(r'[اأإآ]', 'ا', name)  # توحيد الألف
+    name = name.replace('ة', 'ه')        # تحويل التاء المربوطة لهاء
+    name = name.replace('ال', '')        # حذف أل التعريف
+    return name
 
-# 🔹 رسالة البداية
+# ---------------- البحث عن السورة ---------------- #
+def find_surah(user_input):
+    normalized_query = normalize_name(user_input)
+    for surah in surah_data:
+        if normalize_name(surah["name"]) == normalized_query or normalize_name(surah["name"]).startswith(normalized_query):
+            return surah
+    return None
+
+# ---------------- معالجات الرسائل ---------------- #
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = (
-        "👋 أهلاً بك في *بوت آيات القرآن الكريم*.\n\n"
-        "📖 لاستخدام البوت، أرسل اسم السورة متبوعًا برقم الآية.\n"
-        "مثلاً:\n"
-        "`البقرة 2`\n"
-        "`قريش 3`\n\n"
-        "✅ ملاحظات:\n"
-        "- لا يشترط كتابة الألف واللام أو التاء المربوطة بدقة.\n"
-        "- يمكنك كتابة (بقره 2) أو (القرة 2) وستظهر النتيجة الصحيحة."
+    text = (
+        "📖 *مرحبًا بك في بوت آيات القرآن الكريم*\n\n"
+        "🔹 أرسل اسم السورة ثم رقم الآية للحصول على نصها.\n"
+        "مثال:\n"
+        "`البقره 2`\n"
+        "`بقره 2`\n"
+        "`القرة 2`\n\n"
+        "⚠️ لا يهم إن كتبتها بألف أو همزة أو تاء مربوطة."
     )
-    await update.message.reply_text(message, parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="Markdown")
 
-# 🔹 البحث عن الآية المطلوبة
-def find_ayah(surah_name, ayah_number):
-    surah_name_normalized = re.sub(r"[اأإآ]", "ا", surah_name.strip().lower())
-
-    for surah in quran_data:
-        name_normalized = re.sub(r"[اأإآ]", "ا", surah["name"].strip().lower())
-        if surah_name_normalized in name_normalized or name_normalized in surah_name_normalized:
-            for verse in surah["verses"]:
-                if str(verse["id"]) == str(ayah_number):
-                    return f"📖 *{surah['name']} - آية {verse['id']}*\n\n{verse['text']}"
-    return "❌ لم يتم العثور على السورة أو الآية المطلوبة."
-
-# 🔹 عند إرسال رسالة نصية
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    match = re.match(r"([\u0600-\u06FF\s]+)\s+(\d+)", text)
-    if match:
-        surah_name = match.group(1)
-        ayah_number = match.group(2)
-        result = find_ayah(surah_name, ayah_number)
-        await update.message.reply_text(result, parse_mode="Markdown")
-    else:
-        await update.message.reply_text("❗️الرجاء إدخال اسم السورة متبوعًا برقم الآية، مثل:\nالبقرة 2")
+    parts = text.split()
+    
+    if len(parts) != 2:
+        await update.message.reply_text("❌ أرسل اسم السورة ثم رقم الآية، مثل:\n`البقره 2`", parse_mode="Markdown")
+        return
 
-# 🔹 إضافة المعالجات
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("help", start))
-application.add_handler(CommandHandler("about", start))
-application.add_handler(CommandHandler("info", start))
-application.add_handler(CommandHandler("quran", start))
-application.add_handler(CommandHandler("ayah", start))
-application.add_handler(CommandHandler("verse", start))
-application.add_handler(CommandHandler("a", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("s", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("k", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("s", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("a", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("k", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("s", start))
-application.add_handler(CommandHandler("a", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("k", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("a", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("s", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("k", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("a", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("s", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("k", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("a", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("s", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("d", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("q", start))
-application.add_handler(CommandHandler("x", start))
-application.add_handler(CommandHandler("y", start))
-application.add_handler(CommandHandler("b", start))
-application.add_handler(CommandHandler("k", start))
-application.add_handler(CommandHandler("l", start))
-application.add_handler(CommandHandler("v", start))
-application.add_handler(CommandHandler("r", start))
-application.add_handler(CommandHandler("m", start))
-application.add_handler(CommandHandler("n", start))
-application.add_handler(CommandHandler("t", start))
-application.add_handler(CommandHandler("e", start))
-application.add_handler(CommandHandler("f", start))
-application.add_handler(CommandHandler("g", start))
-application.add_handler(CommandHandler("h", start))
-application.add_handler(CommandHandler("j", start))
-application.add_handler(CommandHandler("i", start))
-application.add_handler(CommandHandler("u", start))
-application.add_handler(CommandHandler("o", start))
-application.add_handler(CommandHandler("p", start))
-application.add_handler(CommandHandler("w", start))
-application.add_handler(CommandHandler("z", start))
-application.add_handler(CommandHandler("c", start))
-application.add_handler(CommandHandler("d", start))
+    surah_name, ayah_number = parts
+    surah = find_surah(surah_name)
+
+    if not surah:
+        await update.message.reply_text("⚠️ لم أجد سورة بهذا الاسم، تأكد من الكتابة الصحيحة.")
+        return
+
+    try:
+        ayah_number = int(ayah_number)
+    except ValueError:
+        await update.message.reply_text("⚠️ رقم الآية يجب أن يكون رقمًا صحيحًا.")
+        return
+
+    ayahs = surah.get("ayahs", [])
+    for ayah in ayahs:
+        if ayah.get("id") == ayah_number:
+            await update.message.reply_text(f"📖 *{surah['name']} - آية {ayah_number}:*\n\n{ayah['text']}", parse_mode="Markdown")
+            return
+
+    await update.message.reply_text("⚠️ لم أجد آية بهذا الرقم في السورة.")
+
+# ---------------- إنشاء التطبيق ---------------- #
+application = Application.builder().token(TOKEN).build()
 
 application.add_handler(CommandHandler("start", start))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# تشغيل Webhook
+# ---------------- نقاط Flask ---------------- #
+@app.route("/")
+def home():
+    return "بوت القرآن يعمل ✅"
+
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
     asyncio.get_event_loop().create_task(application.process_update(update))
     return "OK", 200
 
-@app.route("/")
-def home():
-    return "Quran Bot is running 🌙"
-
+# ---------------- تشغيل Flask ---------------- #
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(application.initialize())
-    app.run(host="0.0.0.0", port=10000)
+    # تشغيل البوت في وضع Webhook
+    asyncio.get_event_loop().run_until_complete(application.initialize())
+    asyncio.get_event_loop().run_until_complete(application.bot.set_webhook(url=WEBHOOK_URL))
+    logger.info(f"✅ تم إعداد Webhook على: {WEBHOOK_URL}")
+
+    app.run(host="0.0.0.0", port=PORT)
