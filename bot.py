@@ -26,6 +26,16 @@ except Exception as e:
     logger.error(f"❌ خطأ في تحميل ملف السور: {e}")
     quran_data = []
 
+# 🔹 تحويل الأرقام العربية إلى إنجليزية
+def convert_arabic_numbers(text):
+    arabic_to_english = {
+        "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+        "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9"
+    }
+    for ar, en in arabic_to_english.items():
+        text = text.replace(ar, en)
+    return text
+
 # 🔹 دالة إيجاد الآية
 def find_ayah(surah_name, ayah_id):
     surah_name = surah_name.strip().replace("ال", "").replace("أ", "ا").replace("ة", "ه")
@@ -37,21 +47,26 @@ def find_ayah(surah_name, ayah_id):
                     return f"﴿{verse['text']}﴾\n\n📖 سورة {surah['name']} - آية {verse['id']}"
     return None
 
-# 🔹 أوامر البوت
+# 🔹 أمر /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 مرحبًا بك في بوت آيات القرآن الكريم!\n\n"
         "أرسل اسم السورة متبوعًا برقم الآية مثل:\n"
-        "📖 البقرة 255\n📖 الكهف 10"
+        "📖 البقرة 255\n📖 الكهف ١٠ (يمكن استخدام الأرقام العربية أيضًا)"
     )
 
 # 🔹 معالجة الرسائل
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
+    
+    # 🟢 تحويل الأرقام العربية إلى إنجليزية
+    text = convert_arabic_numbers(text)
+    
+    # 🧩 استخراج السورة والآية
     match = re.match(r"([\u0621-\u064A\s]+)\s+(\d+)", text)
     if not match:
-        return  # ❌ لا يرد على أي نص لا يطابق النمط
-
+        return  # ❌ لا يرد إذا لم يطابق النمط
+    
     surah_name, ayah_id = match.groups()
     result = find_ayah(surah_name, ayah_id)
 
@@ -64,7 +79,7 @@ application = Application.builder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# 🔹 التشغيل عبر Webhook مباشرة
+# 🔹 التشغيل عبر Webhook
 if __name__ == "__main__":
     logger.info("🚀 بدء تشغيل البوت على Render باستخدام Webhook ...")
     application.run_webhook(
