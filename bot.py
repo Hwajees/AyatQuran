@@ -101,12 +101,12 @@ def webhook():
         update = Update.de_json(request.get_json(force=True), application.bot)
 
         async def process_update():
-            # ✅ تأكد من تهيئة التطبيق قبل معالجة التحديث
             if not application._initialized:
                 await application.initialize()
             await application.process_update(update)
 
-        asyncio.create_task(process_update())
+        # ✅ الحل النهائي: تشغيل الـ coroutine يدوياً في event loop جديدة
+        asyncio.run(process_update())
 
     except Exception as e:
         logging.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
