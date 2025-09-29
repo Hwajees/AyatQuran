@@ -11,19 +11,12 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 🔹 إعداد صفحة Flask للرئيسية حتى يبقى البوت شغال ويعمل مع UptimeRobot
+# 🔹 إعداد Flask للرئيسية
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "✅ Quran Bot is running!"
-
-def run_flask():
-    # تشغيل السيرفر البسيط في خيط منفصل
-    app.run(host="0.0.0.0", port=8080)
-
-# تشغيل Flask في خيط مستقل حتى لا يعطل البوت
-threading.Thread(target=run_flask).start()
+    return "✅ Quran Bot is running and healthy!"
 
 # 🔹 قراءة التوكن والمنفذ
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -44,7 +37,6 @@ except Exception as e:
 
 # 🔹 دالة إيجاد الآية
 def find_ayah(surah_name, ayah_id):
-    # تحويل الأرقام العربية إلى إنجليزية
     arabic_to_english = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
     ayah_id = str(ayah_id).translate(arabic_to_english)
 
@@ -67,24 +59,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    match = re.match(r"([\u0621-\u064A\s]+)\s+([\d٠-٩]+)", text)  # يدعم الأرقام العربية والإنجليزية
+    match = re.match(r"([\u0621-\u064A\s]+)\s+([\d٠-٩]+)", text)
     if not match:
-        return  # تجاهل أي رسالة لا تطابق النمط
+        return  # تجاهل أي رسالة غير صحيحة
 
     surah_name, ayah_id = match.groups()
     result = find_ayah(surah_name, ayah_id)
 
     if result:
         await update.message.reply_text(result)
-    # ملاحظة: إذا لم يجد الآية → لا يرد إطلاقًا ✅
+    # إذا لم يجد الآية، لا يرد ✅
 
 # 🔹 إنشاء التطبيق
 application = Application.builder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# 🔹 التشغيل عبر Webhook مباشرة
+# 🔹 تشغيل Flask والبوت معًا على نفس المنفذ
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
+
 if __name__ == "__main__":
+    threading.Thread(target=run_flask).start()
     logger.info("🚀 بدء تشغيل البوت على Render باستخدام Webhook ...")
     application.run_webhook(
         listen="0.0.0.0",
