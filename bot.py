@@ -1,98 +1,75 @@
 import os
-import logging
 import json
-from flask import Flask, request
+import logging
+import re
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-# إعداد السجلات
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("quran-bot")
+# 🔹 إعداد السجلات
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# تحميل بيانات السور والآيات
-with open("quran.json", "r", encoding="utf-8") as f:
-    quran_data = json.load(f)
-
-# إنشاء تطبيق Flask
-app = Flask(__name__)
-
-# جلب التوكن من متغير البيئة
+# 🔹 قراءة التوكن و المنفذ
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+PORT = int(os.getenv("PORT", 10000))
+WEBHOOK_URL = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
 
-# إنشاء تطبيق البوت
-application = Application.builder().token(BOT_TOKEN).build()
+if not BOT_TOKEN:
+    raise ValueError("❌ لم يتم تحديد BOT_TOKEN في متغيرات البيئة")
 
+# 🔹 تحميل ملف السور
+try:
+    with open("surah_data.JSON", "r", encoding="utf-8") as f:
+        quran_data = json.load(f)
+        logger.info("✅ تم تحميل بيانات السور")
+except Exception as e:
+    logger.error(f"❌ خطأ في تحميل ملف السور: {e}")
+    quran_data = []
 
-# ======= دالة لجلب الآية =======
-def get_ayah(surah_name, ayah_number):
-    # البحث عن السورة
-    surah = next((s for s in quran_data if s["name"].strip() == surah_name.strip()), None)
-    if not surah:
-        return None  # السورة غير موجودة
-
-    ayahs = surah["ayahs"]
-
-    # التأكد أن رقم الآية موجود فعلاً
-    if 1 <= ayah_number <= len(ayahs):
-        return ayahs[ayah_number - 1]["text"]
-
-    # إذا كانت الآية خارج النطاق
+# 🔹 دالة إيجاد الآية
+def find_ayah(surah_name, ayah_id):
+    surah_name = surah_name.strip().replace("ال", "").replace("أ", "ا").replace("ة", "ه")
+    for surah in quran_data:
+        name_clean = surah["name"].replace("ال", "").replace("أ", "ا").replace("ة", "ه")
+        if surah_name in name_clean or name_clean in surah_name:
+            for verse in surah["verses"]:
+                if str(verse["id"]) == str(ayah_id):
+                    return f"﴿{verse['text']}﴾\n\n📖 سورة {surah['name']} - آية {verse['id']}"
     return None
 
-
-# ======= دالة /start =======
+# 🔹 أوامر البوت
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 مرحبًا بك في بوت الآيات القرآنية.\nاكتب اسم السورة ورقم الآية مثل:\n\nالبقرة 255")
+    await update.message.reply_text(
+        "👋 مرحبًا بك في بوت آيات القرآن الكريم!\n\n"
+        "أرسل اسم السورة متبوعًا برقم الآية مثل:\n"
+        "📖 البقرة 255\n📖 الكهف 10"
+    )
 
-
-# ======= دالة استقبال الرسائل =======
+# 🔹 معالجة الرسائل
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    logger.info(f"📩 تم استلام رسالة: {text}")
+    match = re.match(r"([\u0621-\u064A\s]+)\s+(\d+)", text)
+    if not match:
+        return  # ❌ لا يرد على أي نص لا يطابق النمط
 
-    # تقسيم النص إلى اسم السورة ورقم الآية
-    parts = text.split()
-    if len(parts) != 2:
-        return  # 🚫 تجاهل أي رسالة غير منسقة بشكل صحيح
+    surah_name, ayah_id = match.groups()
+    result = find_ayah(surah_name, ayah_id)
 
-    surah_name = parts[0]
-    try:
-        ayah_number = int(parts[1])
-    except ValueError:
-        return  # 🚫 تجاهل إذا لم يكن الرقم صالحًا
+    if result:
+        await update.message.reply_text(result)
+    # ⚠️ إذا لم يجد الآية، لا يرد إطلاقًا
 
-    # جلب نص الآية
-    ayah_text = get_ayah(surah_name, ayah_number)
-
-    # ✅ الرد فقط إذا وُجدت الآية فعلاً
-    if ayah_text:
-        await update.message.reply_text(ayah_text)
-    else:
-        # 🚫 لا يرد إذا كانت السورة أو الآية غير موجودة
-        return
-
-
-# ======= إعداد المعالجات =======
+# 🔹 إنشاء التطبيق
+application = Application.builder().token(BOT_TOKEN).build()
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-
-# ======= Webhook =======
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    logger.info(f"📩 تم استلام تحديث جديد: {update.to_dict()}")
-    application.update_queue.put_nowait(update)
-    return "OK", 200
-
-
-# ======= الصفحة الرئيسية =======
-@app.route("/")
-def home():
-    return "✅ Quran Bot is running."
-
-
-# ======= تشغيل البوت =======
+# 🔹 التشغيل عبر Webhook مباشرة
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    logger.info("🚀 بدء تشغيل البوت على Render باستخدام Webhook ...")
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=BOT_TOKEN,
+        webhook_url=WEBHOOK_URL,
+    )
