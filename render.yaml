@@ -2,10 +2,12 @@ services:
   - type: web
     name: ayatquran
     env: python
-    region: oregon
-    plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn bot:app"
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn bot:app --workers 2 --threads 4 --timeout 120
     envVars:
-      - key: BOT_TOKEN
-        value: 7179731919:AAHxZw48ElCJSeCVZUpsG-Pe7Z686qTNV6E
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: WEB_CONCURRENCY
+        value: 2
+    plan: free
+    autoDeploy: true
