@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # ---------------- إعداد السجل ---------------- #
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("quran-bot")
+logger = logging.getLogger("bot")
 
 # ---------------- إعداد البوت ---------------- #
 TOKEN = os.getenv("BOT_TOKEN", "7179731919:AAHxZw48ElCJSeCVZUpsG-Pe7Z686qTNV6E")
@@ -28,15 +28,14 @@ except Exception as e:
     logger.error(f"❌ خطأ في تحميل {DATA_FILE}: {e}")
     surah_data = []
 
-# ---------------- دالة لتوحيد الأسماء ---------------- #
+# ---------------- دوال مساعدة ---------------- #
 def normalize_name(name):
     name = name.strip().lower()
-    name = re.sub(r'[اأإآ]', 'ا', name)  # توحيد الألف
-    name = name.replace('ة', 'ه')        # تحويل التاء المربوطة لهاء
-    name = name.replace('ال', '')        # حذف أل التعريف
+    name = re.sub(r'[اأإآ]', 'ا', name)
+    name = name.replace('ة', 'ه')
+    name = name.replace('ال', '')
     return name
 
-# ---------------- البحث عن السورة ---------------- #
 def find_surah(user_input):
     normalized_query = normalize_name(user_input)
     for surah in surah_data:
@@ -60,7 +59,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     parts = text.split()
-    
+
     if len(parts) != 2:
         await update.message.reply_text("❌ أرسل اسم السورة ثم رقم الآية، مثل:\n`البقره 2`", parse_mode="Markdown")
         return
@@ -88,11 +87,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- إنشاء التطبيق ---------------- #
 application = Application.builder().token(TOKEN).build()
-
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# ---------------- نقاط Flask ---------------- #
+# ---------------- Flask Routes ---------------- #
 @app.route("/")
 def home():
     return "بوت القرآن يعمل ✅"
@@ -100,14 +98,17 @@ def home():
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    asyncio.get_event_loop().create_task(application.process_update(update))
+    try:
+        asyncio.run(application.process_update(update))
+    except Exception as e:
+        logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
     return "OK", 200
 
-# ---------------- تشغيل Flask ---------------- #
+# ---------------- التشغيل ---------------- #
 if __name__ == "__main__":
-    # تشغيل البوت في وضع Webhook
-    asyncio.get_event_loop().run_until_complete(application.initialize())
-    asyncio.get_event_loop().run_until_complete(application.bot.set_webhook(url=WEBHOOK_URL))
+    # تهيئة التطبيق قبل التشغيل
+    asyncio.run(application.initialize())
+    asyncio.run(application.bot.set_webhook(url=WEBHOOK_URL))
     logger.info(f"✅ تم إعداد Webhook على: {WEBHOOK_URL}")
 
     app.run(host="0.0.0.0", port=PORT)
