@@ -81,6 +81,9 @@ application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 # 🔹 هنا الحل النهائي لمشكلة "There is no current event loop"
+# إنشاء حلقة asyncio دائمة (بدون إغلاق)
+loop = asyncio.get_event_loop()
+
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     try:
@@ -91,13 +94,12 @@ def webhook():
                 await application.initialize()
             await application.process_update(update)
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(process_update())
-        loop.close()
+        # شغّل الـ coroutine في نفس الـ loop العام
+        loop.create_task(process_update())
 
     except Exception as e:
         logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
+
     return "OK", 200
 
 @app.route("/")
