@@ -92,15 +92,18 @@ def webhook():
                 await application.initialize()
             await application.process_update(update)
 
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(process_update())
-        else:
-            asyncio.run(process_update())
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        loop.create_task(process_update())
 
     except Exception as e:
         logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
     return "OK", 200
+
 
 # الصفحة الرئيسية
 @app.route("/")
