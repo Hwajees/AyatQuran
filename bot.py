@@ -21,7 +21,8 @@ def home():
 # 🔹 إعداد المتغيرات
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.getenv("PORT", 10000))
-WEBHOOK_URL = f"https://ayatquran.onrender.com/{BOT_TOKEN}"
+WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_URL = f"https://ayatquran.onrender.com{WEBHOOK_PATH}"
 
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN غير موجود في إعدادات Render")
@@ -61,14 +62,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     match = re.match(r"([\u0621-\u064A\s]+)\s+([\d٠-٩]+)", text)
     if not match:
-        return  # تجاهل أي رسالة غير صحيحة
+        return  # تجاهل أي رسالة غير مطابقة
 
     surah_name, ayah_id = match.groups()
     result = find_ayah(surah_name, ayah_id)
 
     if result:
         await update.message.reply_text(result)
-    # إذا لم يجد الآية، لا يرد ✅
+    # إذا لم يجد الآية لا يرد ✅
 
 # 🔹 إنشاء التطبيق
 application = Application.builder().token(BOT_TOKEN).build()
@@ -80,14 +81,12 @@ def run_flask():
     app.run(host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
-    # Flask (للرابط الصحي)
     threading.Thread(target=run_flask).start()
 
-    # البوت (Webhook)
-    logger.info("🚀 بدء تشغيل البوت عبر Webhook ...")
+    logger.info(f"🚀 تشغيل البوت عبر Webhook على المسار: {WEBHOOK_PATH}")
     application.run_webhook(
         listen="0.0.0.0",
-        port=PORT,  # المنفذ الذي يخصصه Render للبوت
-        url_path=BOT_TOKEN,
+        port=PORT,
+        url_path=WEBHOOK_PATH,
         webhook_url=WEBHOOK_URL,
     )
