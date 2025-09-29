@@ -1,4 +1,4 @@
-Flask==3.0.3
+Flask
 python-telegram-bot==20.3
-gunicorn==21.2.0
-asyncio
+requests
+gunicorn
