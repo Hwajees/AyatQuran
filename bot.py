@@ -105,10 +105,14 @@ def webhook():
     return "OK", 200
 
 # ---------------- التشغيل ---------------- #
-if __name__ == "__main__":
-    # تهيئة التطبيق قبل التشغيل
-    asyncio.run(application.initialize())
-    asyncio.run(application.bot.set_webhook(url=WEBHOOK_URL))
-    logger.info(f"✅ تم إعداد Webhook على: {WEBHOOK_URL}")
+if __name__ == '__main__':
+    import threading
 
-    app.run(host="0.0.0.0", port=PORT)
+    async def set_webhook():
+        await application.bot.set_webhook(url=WEBHOOK_URL)
+
+    # تشغيل إعداد الـ webhook في خيط مستقل لتجنب تعارض event loop
+    threading.Thread(target=lambda: asyncio.run(set_webhook())).start()
+
+    # تشغيل الخادم Flask
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
