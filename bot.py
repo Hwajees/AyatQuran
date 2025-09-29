@@ -2,7 +2,6 @@ import json
 import logging
 import re
 import asyncio
-import os
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -12,17 +11,18 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
+import os
 
 # إعداد السجلات
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("bot")
 
 # تحميل ملف القرآن الكريم
 QURAN_FILE = "surah_data.JSON"
 try:
     with open(QURAN_FILE, "r", encoding="utf-8") as f:
         quran_data = json.load(f)
-    logger.info(f"✅ تم تحميل {QURAN_FILE} بنجاح.")
+    logger.info(f"✅ تم تحميل {QURAN_FILE} بنجاح ({len(quran_data)} سورة).")
 except Exception as e:
     logger.error(f"❌ فشل تحميل ملف {QURAN_FILE}: {e}")
     quran_data = []
@@ -30,18 +30,17 @@ except Exception as e:
 # إعداد Flask
 app = Flask(__name__)
 
-# توكن البوت من متغير البيئة
+# الحصول على التوكن من متغير البيئة
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN غير موجود في متغيرات البيئة")
+    raise ValueError("❌ لم يتم العثور على متغير البيئة BOT_TOKEN!")
 
-# إنشاء تطبيق التيليجرام
+# إنشاء التطبيق
 application = Application.builder().token(TOKEN).build()
 
 # دالة البحث عن الآية
 def find_ayah(surah_name, ayah_id):
     surah_name = surah_name.strip().replace("ال", "").replace("أ", "ا").replace("ة", "ه")
-
     for surah in quran_data:
         name_clean = surah["name"].replace("ال", "").replace("أ", "ا").replace("ة", "ه")
         if surah_name in name_clean or name_clean in surah_name:
@@ -50,14 +49,14 @@ def find_ayah(surah_name, ayah_id):
                     return f"﴿{verse['text']}﴾\n\n📖 سورة {surah['name']} - آية {verse['id']}"
     return None
 
-# /start
+# أمر البدء
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "👋 مرحبًا بك في *بوت آيات القرآن الكريم*\n\n"
-        "📖 أرسل اسم السورة متبوعًا برقم الآية مثل:\n"
+        "📖 لاستخدام البوت، أرسل اسم السورة متبوعًا برقم الآية، مثل:\n"
         "▪️ البقرة 255\n"
-        "▪️ الكهف 10\n\n"
-        "وسأرسل لك الآية بإذن الله 🌿"
+        "▪️ آل عمران 8\n\n"
+        "سيقوم البوت بإرسال الآية المطلوبة بإذن الله 🌿"
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -77,11 +76,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ لم أجد هذه الآية، تحقق من اسم السورة ورقم الآية.")
 
-# إضافة الأوامر والمعالجات
+# ربط الأوامر
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# ✅ مسار Webhook المعدّل
+# 🔹 هنا الحل النهائي لمشكلة "There is no current event loop"
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     try:
@@ -92,25 +91,19 @@ def webhook():
                 await application.initialize()
             await application.process_update(update)
 
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        loop.create_task(process_update())
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(process_update())
+        loop.close()
 
     except Exception as e:
         logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
     return "OK", 200
 
-
-# الصفحة الرئيسية
 @app.route("/")
 def index():
     return "بوت القرآن الكريم يعمل بنجاح 🌙"
 
-# تشغيل السيرفر
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
