@@ -87,7 +87,13 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_m
 def webhook():
     try:
         update = Update.de_json(request.get_json(force=True), application.bot)
-        asyncio.run(application.process_update(update))
+
+        async def process_update():
+            if not application._initialized:
+                await application.initialize()
+            await application.process_update(update)
+
+        asyncio.run(process_update())
     except Exception as e:
         logger.error(f"❌ خطأ أثناء معالجة التحديث: {e}")
     return "OK", 200
